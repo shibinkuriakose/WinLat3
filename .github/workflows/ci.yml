@@ -1,19 +1,26 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  SOLUTION_FILE: WinLat3.sln
+  BUILD_CONFIGURATION: Release
 
 jobs:
   build:
     runs-on: windows-latest
-
+    
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-    - name: Set up MSBuild
+    - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.1
 
     - name: Setup Windows SDK
@@ -26,21 +33,86 @@ jobs:
         nuget install Microsoft.WindowsAppSDK -Version 1.4.0
         nuget install Microsoft.Windows.SDK.BuildTools
 
+    - name: Cache NuGet packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Restore NuGet packages
+      run: nuget restore ${{ env.SOLUTION_FILE }}
+
     - name: Build
       run: |
-        msbuild /p:Configuration=Release /p:Platform=x64
+        msbuild /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform=x64 ${{ env.SOLUTION_FILE }}
 
     - name: Run Tests
       run: |
         # Test commands will be added when we have tests
+        echo "Tests will be implemented soon"
+
+    - name: Code Analysis
+      run: |
+        # Static code analysis will be added
+        echo "Code analysis will be implemented soon"
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
 
     - name: Create Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      id: create_release
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        tag_name: v${{ github.run_number }}
+        release_name: Release v${{ github.run_number }}
+        body: |
+          Changes in this Release
+          * Automated release from CI/CD pipeline
         draft: false
-        prerelease: false 
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./path/to/artifact.zip
+        asset_name: WinLat3.zip
+        asset_content_type: application/zip
+
+  documentation:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install mkdocs mkdocs-material
+
+    - name: Build documentation
+      run: mkdocs build
+
+    - name: Deploy documentation
+      if: github.ref == 'refs/heads/main'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./site
