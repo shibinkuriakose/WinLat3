@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Setup Windows SDK
+      uses: microsoft/setup-windowsdk@v1
+      with:
+        version: 19041
+
+    - name: Install WinUI 3
+      run: |
+        nuget install Microsoft.WindowsAppSDK -Version 1.4.0
+        nuget install Microsoft.Windows.SDK.BuildTools
+
+    - name: Build
+      run: |
+        msbuild /p:Configuration=Release /p:Platform=x64
+
+    - name: Run Tests
+      run: |
+        # Test commands will be added when we have tests
+
+    - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false 
